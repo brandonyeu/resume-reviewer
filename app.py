@@ -61,39 +61,32 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 # CONFIG
 # -----------------------
 MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-
-hf_token = st.secrets["HF_TOKEN"]
-
 device = "cpu"
 
 # -----------------------
-# LOAD MODEL (cached)
+# LAZY MODEL LOADING
 # -----------------------
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_model():
-    global tokenizer, model
-
-    if tokenizer is not None and model is not None:
-        return
-
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
-        device_map=None,
         torch_dtype="auto",
-        low_cpu_mem_usage=True,
+        low_cpu_mem_usage=True
     )
-    model.to(device)
 
-tokenizer, model = load_model()
+    model.to(device)
+    return tokenizer, model
+
 
 # -----------------------
 # GENERATION FUNCTION
 # -----------------------
 def generate(prompt):
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+    tokenizer, model = load_model()
 
+    inputs = tokenizer(prompt, return_tensors="pt").to(device)
     input_length = inputs["input_ids"].shape[1]
 
     outputs = model.generate(
@@ -107,8 +100,9 @@ def generate(prompt):
     generated = outputs[0][input_length:]
     return tokenizer.decode(generated, skip_special_tokens=True).strip()
 
+
 # -----------------------
-# JSON PARSER (ROBUST)
+# JSON PARSER
 # -----------------------
 def extract_json(text):
     try:
@@ -140,45 +134,42 @@ def safe_parse(output):
 
     return parsed
 
+
 # -----------------------
-# PROMPT ENGINEERING
+# PROMPT
 # -----------------------
 def improve_resume(text, job_desc=""):
-    prompt = f"""<|system|>
-You are a professional resume optimization engine.
-You produce structured, ATS-optimized resumes.
-</s>
-<|user|>
+    prompt = f"""
+You are a professional resume editor.
+
 Return ONLY valid JSON:
 
 {{
-  "revised_resume": "formatted resume in clean markdown",
+  "revised_resume": "formatted resume",
   "changes": [
-    "Change 1 + why it improves ATS/readability",
-    "Change 2 + why it improves ATS/readability",
-    "Change 3 + why it improves ATS/readability"
+    "Change 1 + why",
+    "Change 2 + why",
+    "Change 3 + why"
   ]
 }}
 
-CRITICAL RULES:
-- revised_resume MUST look like a real resume
-- Use format:
-  Job Title | Company | Location | Dates
-  - Bullet point
-  - Bullet point
-- NO paragraphs
-- NO extra text outside JSON
-- MUST include at least 3 changes
+RULES:
+- Format resume like:
+  Title | Company | Location | Dates
+  - Bullet
+  - Bullet
+- No extra text outside JSON
+- At least 3 changes with explanations
 
 Resume:
 {text}
 
 Job Description:
 {job_desc}
-</s>
 """
 
     return safe_parse(generate(prompt))
+
 
 # -----------------------
 # UI
@@ -193,7 +184,7 @@ if st.button("Improve Resume"):
         st.warning("Please enter a resume first.")
         st.stop()
 
-    with st.spinner("Improving resume..."):
+    with st.spinner("Loading model and improving resume... (first run takes ~20–40s)"):
         result = improve_resume(resume, job_desc)
 
         st.markdown("## ✨ Revised Resume")
