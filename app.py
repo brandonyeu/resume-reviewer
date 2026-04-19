@@ -64,25 +64,27 @@ MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
 hf_token = st.secrets["HF_TOKEN"]
 
+device = "cpu"
+
 # -----------------------
 # LOAD MODEL (cached)
 # -----------------------
 @st.cache_resource
 def load_model():
-    tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME,
-        token=hf_token
-    )
+    global tokenizer, model
+
+    if tokenizer is not None and model is not None:
+        return
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
-        token=hf_token,
-        device_map="auto",
-        torch_dtype=torch.float16
+        device_map=None,
+        torch_dtype="auto",
+        low_cpu_mem_usage=True,
     )
-
-    return tokenizer, model
-
+    model.to(device)
 
 tokenizer, model = load_model()
 
@@ -90,15 +92,14 @@ tokenizer, model = load_model()
 # GENERATION FUNCTION
 # -----------------------
 def generate(prompt):
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
     input_length = inputs["input_ids"].shape[1]
 
     outputs = model.generate(
         **inputs,
-        max_new_tokens=600,
+        max_new_tokens=400,
         temperature=0.3,
-        do_sample=True,
         repetition_penalty=1.1,
         eos_token_id=tokenizer.eos_token_id
     )
