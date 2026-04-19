@@ -55,28 +55,30 @@ import streamlit as st
 import torch
 import json
 import re
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# -----------------------
+# CONFIG
+# -----------------------
+MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+
+hf_token = st.secrets["HF_TOKEN"]
 
 # -----------------------
 # LOAD MODEL (cached)
 # -----------------------
 @st.cache_resource
 def load_model():
-    model_name = "mistralai/Mistral-7B-Instruct-v0.1"
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4"
+    tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_NAME,
+        token=hf_token
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
+        MODEL_NAME,
+        token=hf_token,
         device_map="auto",
-        quantization_config=bnb_config
+        torch_dtype=torch.float16
     )
 
     return tokenizer, model
@@ -88,7 +90,7 @@ tokenizer, model = load_model()
 # GENERATION FUNCTION
 # -----------------------
 def generate(prompt):
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
     input_length = inputs["input_ids"].shape[1]
 
@@ -102,67 +104,83 @@ def generate(prompt):
     )
 
     generated = outputs[0][input_length:]
-    return tokenizer.decode(generated, skip_special_tokens=True)
-
+    return tokenizer.decode(generated, skip_special_tokens=True).strip()
 
 # -----------------------
-# SAFE PARSER
+# JSON PARSER (ROBUST)
 # -----------------------
-def safe_parse(output):
+def extract_json(text):
     try:
-        return json.loads(output)
+        return json.loads(text)
     except:
-        match = re.search(r"\{.*\}", output, re.DOTALL)
+        match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group())
             except:
                 pass
+    return None
 
-    return {
-        "revised_resume": output,
-        "changes": [
-            "Could not parse structured output",
-            "Returned raw model response"
-        ]
-    }
 
+def safe_parse(output):
+    parsed = extract_json(output)
+
+    if not parsed:
+        return {
+            "revised_resume": output,
+            "changes": [
+                "Model output was not valid JSON",
+                "Returned raw output instead"
+            ]
+        }
+
+    if not parsed.get("changes"):
+        parsed["changes"] = ["No change explanation provided"]
+
+    return parsed
 
 # -----------------------
-# PROMPT
+# PROMPT ENGINEERING
 # -----------------------
-def improve_resume(text, job_desc):
-    prompt = f"""[INST]
-You are a professional resume editor.
-
+def improve_resume(text, job_desc=""):
+    prompt = f"""<|system|>
+You are a professional resume optimization engine.
+You produce structured, ATS-optimized resumes.
+</s>
+<|user|>
 Return ONLY valid JSON:
 
 {{
-  "revised_resume": "formatted resume in markdown",
+  "revised_resume": "formatted resume in clean markdown",
   "changes": [
-    "Change 1 + why",
-    "Change 2 + why",
-    "Change 3 + why"
+    "Change 1 + why it improves ATS/readability",
+    "Change 2 + why it improves ATS/readability",
+    "Change 3 + why it improves ATS/readability"
   ]
 }}
 
-Rules:
-- Must format resume properly (Title | Company | Dates + bullets)
-- Must include at least 3 changes with explanations
-- Must not include extra text outside JSON
+CRITICAL RULES:
+- revised_resume MUST look like a real resume
+- Use format:
+  Job Title | Company | Location | Dates
+  - Bullet point
+  - Bullet point
+- NO paragraphs
+- NO extra text outside JSON
+- MUST include at least 3 changes
 
 Resume:
 {text}
 
 Job Description:
 {job_desc}
-[/INST]
+</s>
 """
+
     return safe_parse(generate(prompt))
 
-
 # -----------------------
-# STREAMLIT UI
+# UI
 # -----------------------
 st.title("AI Resume Improver")
 
@@ -170,12 +188,16 @@ resume = st.text_area("Paste your resume", height=250)
 job_desc = st.text_area("Paste job description (optional)", height=150)
 
 if st.button("Improve Resume"):
+    if not resume.strip():
+        st.warning("Please enter a resume first.")
+        st.stop()
+
     with st.spinner("Improving resume..."):
         result = improve_resume(resume, job_desc)
 
         st.markdown("## ✨ Revised Resume")
-        st.markdown(result["revised_resume"])
+        st.markdown(result.get("revised_resume", ""))
 
         st.markdown("## 🧠 What Changed & Why")
-        for c in result["changes"]:
-            st.markdown(f"- {c}")
+        for change in result.get("changes", []):
+            st.markdown(f"- {change}")
