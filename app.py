@@ -60,7 +60,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 # -----------------------
 # CONFIG
 # -----------------------
-MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
 hf_token = st.secrets["HF_TOKEN"]
 
