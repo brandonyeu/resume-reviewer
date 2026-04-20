@@ -1,6 +1,2 @@
 streamlit
-torch
-transformers
-accelerate
-bitsandbytes
-torchvision
+requests

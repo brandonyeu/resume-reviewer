@@ -52,104 +52,60 @@
 #             st.error(f"Request failed: {str(e)}")
 
 import streamlit as st
-import torch
-import json
-import re
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import requests
 
 # -----------------------
 # CONFIG
 # -----------------------
-MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-device = "cpu"
+API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
+
+headers = {
+    "Authorization": f"Bearer {st.secrets['HF_TOKEN']}"
+}
 
 # -----------------------
-# LAZY MODEL LOADING
+# QUERY FUNCTION
 # -----------------------
-@st.cache_resource(show_spinner=False)
-def load_model():
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype="auto",
-        low_cpu_mem_usage=True
+def query_hf(prompt):
+    response = requests.post(
+        API_URL,
+        headers=headers,
+        json={
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 300,
+                "temperature": 0.3,
+                "return_full_text": False
+            }
+        },
+        timeout=60
     )
 
-    model.to(device)
-    return tokenizer, model
+    if response.status_code != 200:
+        return f"Error: {response.text}"
 
+    data = response.json()
 
-# -----------------------
-# GENERATION FUNCTION
-# -----------------------
-def generate(prompt):
-    tokenizer, model = load_model()
+    if isinstance(data, list):
+        return data[0].get("generated_text", "")
+    elif isinstance(data, dict) and "generated_text" in data:
+        return data["generated_text"]
 
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
-    input_length = inputs["input_ids"].shape[1]
-
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=250,
-        temperature=0.3,
-        repetition_penalty=1.1,
-        eos_token_id=tokenizer.eos_token_id
-    )
-
-    generated = outputs[0][input_length:]
-    return tokenizer.decode(generated, skip_special_tokens=True).strip()
-
+    return str(data)
 
 # -----------------------
-# JSON PARSER
-# -----------------------
-def extract_json(text):
-    try:
-        return json.loads(text)
-    except:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except:
-                pass
-    return None
-
-
-def safe_parse(output):
-    parsed = extract_json(output)
-
-    if not parsed:
-        return {
-            "revised_resume": output,
-            "changes": [
-                "Model output was not valid JSON",
-                "Returned raw output instead"
-            ]
-        }
-
-    if not parsed.get("changes"):
-        parsed["changes"] = ["No change explanation provided"]
-
-    return parsed
-
-
-# -----------------------
-# PROMPT
+# PROMPT FUNCTION
 # -----------------------
 def improve_resume(text, job_desc=""):
     prompt = f"""
 You are a professional resume editor.
 
-You are given ONLY a section of a resume (NOT the full resume).
-
-Your job is to improve THIS SECTION ONLY.
+You are given ONLY a section of a resume.
 
 OUTPUT FORMAT (follow EXACTLY):
 
 REVISED SECTION:
-<same structure as input, but improved>
+<improved version of the section>
 
 CHANGES:
 - explain what was changed and why
@@ -157,15 +113,13 @@ CHANGES:
 - explain what was changed and why
 
 STRICT RULES:
-- DO NOT add new sections (NO Skills, NO Summary, etc.)
-- DO NOT invent information
+- DO NOT add new sections (NO Skills, NO Summary)
 - KEEP the same structure as the input
-- If input is a job experience:
-    → keep job title, company, dates
-    → keep bullet format
-- ONLY rewrite and improve wording
-- Make bullets more impactful, concise, and technical
-- Each change must explain WHY
+- If it's a job experience:
+  → keep title, company, dates
+  → keep bullet format
+- ONLY improve wording, clarity, and impact
+- DO NOT invent information
 
 INPUT SECTION:
 {text}
@@ -173,22 +127,22 @@ INPUT SECTION:
 JOB DESCRIPTION (optional):
 {job_desc}
 """
-    return generate(prompt)
+    return query_hf(prompt)
 
 # -----------------------
-# UI
+# STREAMLIT UI
 # -----------------------
 st.title("AI Resume Improver")
 
-resume = st.text_area("Paste your resume", height=250)
+resume = st.text_area("Paste your resume section", height=250)
 job_desc = st.text_area("Paste job description (optional)", height=150)
 
 if st.button("Improve Resume"):
     if not resume.strip():
-        st.warning("Please enter a resume first.")
+        st.warning("Please enter a resume section first.")
         st.stop()
 
-    with st.spinner("Loading model and improving resume... (first run takes ~20–40s)"):
+    with st.spinner("Improving your resume..."):
         result = improve_resume(resume, job_desc)
 
         if "CHANGES:" in result:
@@ -199,10 +153,10 @@ if st.button("Improve Resume"):
 
         section_part = section_part.replace("REVISED SECTION:", "").strip()
 
-        st.markdown("## ✨ Revised Section")
+        st.markdown("## Revised Section")
         st.markdown(section_part)
 
-        st.markdown("## 🧠 What Changed & Why")
+        st.markdown("## What Changed & Why")
         for line in changes_part.strip().split("\n"):
             if line.strip():
                 st.markdown(line)
