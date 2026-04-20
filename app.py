@@ -142,34 +142,35 @@ def improve_resume(text, job_desc=""):
     prompt = f"""
 You are a professional resume editor.
 
-Rewrite the resume below.
+You are given ONLY a section of a resume (NOT the full resume).
+
+Your job is to improve THIS SECTION ONLY.
 
 OUTPUT FORMAT (follow EXACTLY):
 
-REVISED RESUME:
-<properly formatted resume>
+REVISED SECTION:
+<same structure as input, but improved>
 
 CHANGES:
 - explain what was changed and why
 - explain what was changed and why
 - explain what was changed and why
 
-RULES:
-- Format like a real resume:
-  Job Title | Company | Location | Dates
-  - Bullet point
-  - Bullet point
-
-- Do NOT output paragraphs
-- Do NOT list random skills
-- Use ONLY the provided resume content
-- Improve clarity, impact, and formatting
+STRICT RULES:
+- DO NOT add new sections (NO Skills, NO Summary, etc.)
+- DO NOT invent information
+- KEEP the same structure as the input
+- If input is a job experience:
+    → keep job title, company, dates
+    → keep bullet format
+- ONLY rewrite and improve wording
+- Make bullets more impactful, concise, and technical
 - Each change must explain WHY
 
-Resume:
+INPUT SECTION:
 {text}
 
-Job Description:
+JOB DESCRIPTION (optional):
 {job_desc}
 """
     return generate(prompt)
@@ -191,17 +192,17 @@ if st.button("Improve Resume"):
         result = improve_resume(resume, job_desc)
 
         if "CHANGES:" in result:
-            resume_part, changes_part = result.split("CHANGES:", 1)
+            section_part, changes_part = result.split("CHANGES:", 1)
         else:
-            resume_part = result
+            section_part = result
             changes_part = "No changes provided"
 
-        resume_part = resume_part.replace("REVISED RESUME:", "").strip()
+        section_part = section_part.replace("REVISED SECTION:", "").strip()
 
-        st.markdown("## Revised Resume")
-        st.markdown(resume_part)
+        st.markdown("## ✨ Revised Section")
+        st.markdown(section_part)
 
-        st.markdown("## What Changed & Why")
+        st.markdown("## 🧠 What Changed & Why")
         for line in changes_part.strip().split("\n"):
             if line.strip():
                 st.markdown(line)
