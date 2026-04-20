@@ -56,60 +56,53 @@ import requests
 # -----------------------
 # CONFIG
 # -----------------------
-HF_TOKEN = st.secrets.get("HF_TOKEN", None)
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", None)
 
-API_URL = "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta"
+API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 headers = {
-    "Authorization": f"Bearer {HF_TOKEN}"
-} if HF_TOKEN else {}
+    "Authorization": f"Bearer {GROQ_API_KEY}",
+    "Content-Type": "application/json"
+} if GROQ_API_KEY else {}
 
 # -----------------------
 # QUERY FUNCTION
 # -----------------------
-def query_hf(prompt):
+def query_groq(messages):
     try:
         response = requests.post(
             API_URL,
             headers=headers,
             json={
-                "inputs": prompt,
-                "parameters": {
-                    "max_new_tokens": 300,
-                    "temperature": 0.3,
-                    "return_full_text": False
-                }
+                "model": "llama3-8b-8192",
+                "messages": messages,
+                "temperature": 0.3,
+                "max_tokens": 500
             },
-            timeout=60
+            timeout=30
         )
 
         if response.status_code != 200:
-            return f"Error from Hugging Face:\n{response.text}"
+            return f"Error from Groq:\n{response.text}"
 
         data = response.json()
-
-        if isinstance(data, list) and len(data) > 0:
-            return data[0].get("generated_text", "")
-        elif isinstance(data, dict):
-            if "generated_text" in data:
-                return data["generated_text"]
-            if "error" in data:
-                return f"HF Error: {data['error']}"
-
-        return str(data)
+        return data["choices"][0]["message"]["content"]
 
     except Exception as e:
         return f"Request failed: {str(e)}"
 
 # -----------------------
-# PROMPT FUNCTION
+# RESUME FUNCTION
 # -----------------------
 def improve_resume(text, job_desc=""):
-    prompt = f"""
-<|system|>
-You are a professional resume editor.
-</s>
-<|user|>
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a professional resume editor."
+        },
+        {
+            "role": "user",
+            "content": f"""
 You are given ONLY a section of a resume.
 
 OUTPUT FORMAT:
@@ -123,28 +116,30 @@ CHANGES:
 - change + why
 
 RULES:
-- KEEP the same structure
-- DO NOT add new sections
-- ONLY improve wording
+- KEEP the same structure as input
+- DO NOT add new sections (no Skills, no Summary)
+- ONLY improve wording, clarity, and impact
 - DO NOT invent information
+- Keep bullet points if present
 
 INPUT:
 {text}
 
 JOB DESCRIPTION:
 {job_desc}
-</s>
-<|assistant|>
 """
-    return query_hf(prompt)
+        }
+    ]
+
+    return query_groq(messages)
 
 # -----------------------
 # UI
 # -----------------------
 st.title("AI Resume Improver")
 
-if not HF_TOKEN:
-    st.warning("⚠️ Hugging Face token not found. Add HF_TOKEN in Streamlit secrets.")
+if not GROQ_API_KEY:
+    st.warning("⚠️ Add GROQ_API_KEY to Streamlit secrets to use the app.")
 
 resume = st.text_area("Paste your resume section", height=250)
 job_desc = st.text_area("Paste job description (optional)", height=150)
@@ -157,7 +152,7 @@ if st.button("Improve Resume"):
     with st.spinner("Improving your resume..."):
         result = improve_resume(resume, job_desc)
 
-        if result.startswith("Error") or result.startswith("HF Error") or result.startswith("Request failed"):
+        if result.startswith("Error") or result.startswith("Request failed"):
             st.error(result)
             st.stop()
 
