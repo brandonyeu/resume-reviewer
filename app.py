@@ -74,7 +74,7 @@ def query_groq(messages):
             API_URL,
             headers=headers,
             json={
-                "model": "llama3-8b-8192",
+                "model": "llama-3.1-8b-instant",
                 "messages": messages,
                 "temperature": 0.3,
                 "max_tokens": 500
