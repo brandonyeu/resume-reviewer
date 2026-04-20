@@ -91,7 +91,7 @@ def generate(prompt):
 
     outputs = model.generate(
         **inputs,
-        max_new_tokens=400,
+        max_new_tokens=250,
         temperature=0.3,
         repetition_penalty=1.1,
         eos_token_id=tokenizer.eos_token_id
@@ -187,9 +187,9 @@ if st.button("Improve Resume"):
     with st.spinner("Loading model and improving resume... (first run takes ~20–40s)"):
         result = improve_resume(resume, job_desc)
 
-        st.markdown("## ✨ Revised Resume")
+        st.markdown("## Revised Resume")
         st.markdown(result.get("revised_resume", ""))
 
-        st.markdown("## 🧠 What Changed & Why")
+        st.markdown("## What Changed & Why")
         for change in result.get("changes", []):
             st.markdown(f"- {change}")
