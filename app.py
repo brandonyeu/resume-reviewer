@@ -58,7 +58,7 @@ import requests
 # -----------------------
 HF_TOKEN = st.secrets.get("HF_TOKEN", None)
 
-API_URL = "https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.1"
+API_URL = "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta"
 
 headers = {
     "Authorization": f"Bearer {HF_TOKEN}"
@@ -106,8 +106,10 @@ def query_hf(prompt):
 # -----------------------
 def improve_resume(text, job_desc=""):
     prompt = f"""
+<|system|>
 You are a professional resume editor.
-
+</s>
+<|user|>
 You are given ONLY a section of a resume.
 
 OUTPUT FORMAT:
@@ -121,9 +123,9 @@ CHANGES:
 - change + why
 
 RULES:
-- KEEP the same structure as input
+- KEEP the same structure
 - DO NOT add new sections
-- ONLY improve wording and clarity
+- ONLY improve wording
 - DO NOT invent information
 
 INPUT:
@@ -131,6 +133,8 @@ INPUT:
 
 JOB DESCRIPTION:
 {job_desc}
+</s>
+<|assistant|>
 """
     return query_hf(prompt)
 
