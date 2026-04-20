@@ -142,24 +142,29 @@ def improve_resume(text, job_desc=""):
     prompt = f"""
 You are a professional resume editor.
 
-Return ONLY valid JSON:
+Rewrite the resume below.
 
-{{
-  "revised_resume": "formatted resume",
-  "changes": [
-    "Change 1 + why",
-    "Change 2 + why",
-    "Change 3 + why"
-  ]
-}}
+OUTPUT FORMAT (follow EXACTLY):
+
+REVISED RESUME:
+<properly formatted resume>
+
+CHANGES:
+- explain what was changed and why
+- explain what was changed and why
+- explain what was changed and why
 
 RULES:
-- Format resume like:
-  Title | Company | Location | Dates
-  - Bullet
-  - Bullet
-- No extra text outside JSON
-- At least 3 changes with explanations
+- Format like a real resume:
+  Job Title | Company | Location | Dates
+  - Bullet point
+  - Bullet point
+
+- Do NOT output paragraphs
+- Do NOT list random skills
+- Use ONLY the provided resume content
+- Improve clarity, impact, and formatting
+- Each change must explain WHY
 
 Resume:
 {text}
@@ -167,9 +172,7 @@ Resume:
 Job Description:
 {job_desc}
 """
-
-    return safe_parse(generate(prompt))
-
+    return generate(prompt)
 
 # -----------------------
 # UI
@@ -187,9 +190,18 @@ if st.button("Improve Resume"):
     with st.spinner("Loading model and improving resume... (first run takes ~20–40s)"):
         result = improve_resume(resume, job_desc)
 
+        if "CHANGES:" in result:
+            resume_part, changes_part = result.split("CHANGES:", 1)
+        else:
+            resume_part = result
+            changes_part = "No changes provided"
+
+        resume_part = resume_part.replace("REVISED RESUME:", "").strip()
+
         st.markdown("## Revised Resume")
-        st.markdown(result.get("revised_resume", ""))
+        st.markdown(resume_part)
 
         st.markdown("## What Changed & Why")
-        for change in result.get("changes", []):
-            st.markdown(f"- {change}")
+        for line in changes_part.strip().split("\n"):
+            if line.strip():
+                st.markdown(line)
