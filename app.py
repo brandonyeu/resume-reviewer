@@ -50,48 +50,56 @@
 
 #         except Exception as e:
 #             st.error(f"Request failed: {str(e)}")
-
 import streamlit as st
 import requests
 
 # -----------------------
 # CONFIG
 # -----------------------
+HF_TOKEN = st.secrets.get("HF_TOKEN", None)
+
 API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
 
 headers = {
-    "Authorization": f"Bearer {st.secrets['HF_TOKEN']}"
-}
+    "Authorization": f"Bearer {HF_TOKEN}"
+} if HF_TOKEN else {}
 
 # -----------------------
 # QUERY FUNCTION
 # -----------------------
 def query_hf(prompt):
-    response = requests.post(
-        API_URL,
-        headers=headers,
-        json={
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 300,
-                "temperature": 0.3,
-                "return_full_text": False
-            }
-        },
-        timeout=60
-    )
+    try:
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json={
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": 300,
+                    "temperature": 0.3,
+                    "return_full_text": False
+                }
+            },
+            timeout=60
+        )
 
-    if response.status_code != 200:
-        return f"Error: {response.text}"
+        if response.status_code != 200:
+            return f"Error from Hugging Face:\n{response.text}"
 
-    data = response.json()
+        data = response.json()
 
-    if isinstance(data, list):
-        return data[0].get("generated_text", "")
-    elif isinstance(data, dict) and "generated_text" in data:
-        return data["generated_text"]
+        if isinstance(data, list):
+            return data[0].get("generated_text", "")
+        elif isinstance(data, dict):
+            if "generated_text" in data:
+                return data["generated_text"]
+            if "error" in data:
+                return f"HF Error: {data['error']}"
 
-    return str(data)
+        return str(data)
+
+    except Exception as e:
+        return f"Request failed: {str(e)}"
 
 # -----------------------
 # PROMPT FUNCTION
@@ -102,48 +110,52 @@ You are a professional resume editor.
 
 You are given ONLY a section of a resume.
 
-OUTPUT FORMAT (follow EXACTLY):
+OUTPUT FORMAT:
 
 REVISED SECTION:
-<improved version of the section>
+<improved version>
 
 CHANGES:
-- explain what was changed and why
-- explain what was changed and why
-- explain what was changed and why
+- change + why
+- change + why
+- change + why
 
-STRICT RULES:
-- DO NOT add new sections (NO Skills, NO Summary)
-- KEEP the same structure as the input
-- If it's a job experience:
-  → keep title, company, dates
-  → keep bullet format
-- ONLY improve wording, clarity, and impact
+RULES:
+- KEEP the same structure as input
+- DO NOT add new sections
+- ONLY improve wording and clarity
 - DO NOT invent information
 
-INPUT SECTION:
+INPUT:
 {text}
 
-JOB DESCRIPTION (optional):
+JOB DESCRIPTION:
 {job_desc}
 """
     return query_hf(prompt)
 
 # -----------------------
-# STREAMLIT UI
+# UI
 # -----------------------
 st.title("AI Resume Improver")
+
+if not HF_TOKEN:
+    st.warning("⚠️ Hugging Face token not found. Add HF_TOKEN in Streamlit secrets.")
 
 resume = st.text_area("Paste your resume section", height=250)
 job_desc = st.text_area("Paste job description (optional)", height=150)
 
 if st.button("Improve Resume"):
     if not resume.strip():
-        st.warning("Please enter a resume section first.")
+        st.warning("Please enter a resume section.")
         st.stop()
 
     with st.spinner("Improving your resume..."):
         result = improve_resume(resume, job_desc)
+
+        if result.startswith("Error") or result.startswith("HF Error") or result.startswith("Request failed"):
+            st.error(result)
+            st.stop()
 
         if "CHANGES:" in result:
             section_part, changes_part = result.split("CHANGES:", 1)
