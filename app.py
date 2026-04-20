@@ -58,7 +58,7 @@ import requests
 # -----------------------
 HF_TOKEN = st.secrets.get("HF_TOKEN", None)
 
-API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
+API_URL = "https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.1"
 
 headers = {
     "Authorization": f"Bearer {HF_TOKEN}"
@@ -88,7 +88,7 @@ def query_hf(prompt):
 
         data = response.json()
 
-        if isinstance(data, list):
+        if isinstance(data, list) and len(data) > 0:
             return data[0].get("generated_text", "")
         elif isinstance(data, dict):
             if "generated_text" in data:
